@@ -9,6 +9,7 @@ from aiohttp_socks import ProxyConnector
 from fake_useragent import FakeUserAgent
 from eth_account import Account
 from eth_account.messages import encode_defunct
+from eth_utils import to_hex
 from datetime import datetime
 from colorama import *
 import asyncio, os, pytz
@@ -116,6 +117,7 @@ class ByteNova:
         try:
             account = Account.from_key(account)
             address = account.address
+
             return address
         except Exception as e:
             return None
@@ -125,8 +127,9 @@ class ByteNova:
             message = "You hereby confirm that you are the owner of this connected wallet. This is a safe and gasless transaction to verify your ownership. Signing this message will not give ByteNova permission to make transactions with your wallet."
             encoded_message = encode_defunct(text=message)
             signed_message = Account.sign_message(encoded_message, private_key=account)
-            signature = signed_message.signature.hex()
-            return f"0x{signature}"
+            signature = to_hex(signed_message.signature)
+
+            return signature
         except Exception as e:
             return None
     
@@ -400,7 +403,7 @@ class ByteNova:
 
                 self.log(f"{Fore.CYAN + Style.BRIGHT}={Style.RESET_ALL}"*72)
                 
-                delay = 24 * 60 * 60
+                delay = 12 * 60 * 60
                 while delay > 0:
                     formatted_time = self.format_seconds(delay)
                     print(
