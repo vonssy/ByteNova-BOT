@@ -2,15 +2,16 @@
 ByteNova AI BOT
 
 - Register Here : [ByteNova AI](https://bytenova.ai/rewards?invite_code=SEL76HbfL)
-- Use Code      : SEL76HbfL
+- Use Code `SEL76HbfL`
 - Connect Your X Account
 
 ## Features
 
   - Auto Get Account Information
-  - Auto Run With [Monosans](https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all.txt) Proxy - Choose 1
-  - Auto Run With Private Proxy - Choose 2
-  - Auto Run Without Proxy - Choose 3
+  - Auto Run With [Monosans](https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all.txt) Proxy - `Choose 1`
+  - Auto Run With Private Proxy - `Choose 2`
+  - Auto Run Without Proxy - `Choose 3`
+  - Auto Rotate Invalid Proxies - `y` or `n`
   - Auto Complete Avaialble Tasks
   - Multi Accounts
 
@@ -37,8 +38,8 @@ ByteNova AI BOT
 
 - **accounts.txt:** You will find the file `accounts.txt` inside the project directory. Make sure `accounts.txt` contains data that matches the format expected by the script. Here are examples of file formats:
   ```bash
-    your_evm_private_key_1
-    your_evm_private_key_2
+    your_private_key_1
+    your_private_key_2
   ```
 
   - **proxy.txt:** You will find the file `proxy.txt` inside the project directory. Make sure `proxy.txt` contains data that matches the format expected by the script. Here are examples of file formats:
