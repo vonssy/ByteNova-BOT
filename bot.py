@@ -340,7 +340,6 @@ class ByteNova:
                     f"{Fore.MAGENTA + Style.BRIGHT}   >{Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT} {title} {Style.RESET_ALL}"
                     f"{Fore.RED + Style.BRIGHT}Not Completed:{Style.RESET_ALL}"
-                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
                 )
     
