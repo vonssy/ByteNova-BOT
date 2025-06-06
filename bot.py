@@ -32,6 +32,8 @@ class ByteNova:
         self.proxies = []
         self.proxy_index = 0
         self.account_proxies = {}
+        self.access_tokens = {}
+        self.cookie_headers = {}
 
     def clear_terminal(self):
         os.system('cls' if os.name == 'nt' else 'clear')
@@ -63,18 +65,18 @@ class ByteNova:
         try:
             if use_proxy_choice == 1:
                 async with ClientSession(timeout=ClientTimeout(total=30)) as session:
-                    async with session.get("https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all.txt") as response:
+                    async with session.get("https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text") as response:
                         response.raise_for_status()
                         content = await response.text()
                         with open(filename, 'w') as f:
                             f.write(content)
-                        self.proxies = content.splitlines()
+                        self.proxies = [line.strip() for line in content.splitlines() if line.strip()]
             else:
                 if not os.path.exists(filename):
                     self.log(f"{Fore.RED + Style.BRIGHT}File {filename} Not Found.{Style.RESET_ALL}")
                     return
                 with open(filename, 'r') as f:
-                    self.proxies = f.read().splitlines()
+                    self.proxies = [line.strip() for line in f.read().splitlines() if line.strip()]
             
             if not self.proxies:
                 self.log(f"{Fore.RED + Style.BRIGHT}No Proxies Found.{Style.RESET_ALL}")
@@ -130,7 +132,7 @@ class ByteNova:
 
             return signature
         except Exception as e:
-            return None
+            raise Exception(f"Generate Req Payload Failed: {str(e)}")
         
     def extract_cookies(self, raw_cookies: list):
         cookies_dict = {}
@@ -153,27 +155,30 @@ class ByteNova:
             
             return cookie_header
         except Exception as e:
-            return None
+            raise Exception(f"Extract Cookies Data Failed: {str(e)}")
     
     def mask_account(self, account):
-        mask_account = account[:6] + '*' * 6 + account[-6:]
-        return mask_account
+        try:
+            mask_account = account[:6] + '*' * 6 + account[-6:]
+            return mask_account
+        except Exception as e:
+            return None
 
     def print_question(self):
         while True:
             try:
-                print(f"{Fore.WHITE + Style.BRIGHT}1. Run With Monosans Proxy{Style.RESET_ALL}")
+                print(f"{Fore.WHITE + Style.BRIGHT}1. Run With Proxyscrape Free Proxy{Style.RESET_ALL}")
                 print(f"{Fore.WHITE + Style.BRIGHT}2. Run With Private Proxy{Style.RESET_ALL}")
                 print(f"{Fore.WHITE + Style.BRIGHT}3. Run Without Proxy{Style.RESET_ALL}")
                 choose = int(input(f"{Fore.BLUE + Style.BRIGHT}Choose [1/2/3] -> {Style.RESET_ALL}").strip())
 
                 if choose in [1, 2, 3]:
                     proxy_type = (
-                        "Run With Monosans Proxy" if choose == 1 else 
-                        "Run With Private Proxy" if choose == 2 else 
-                        "Run Without Proxy"
+                        "With Proxyscrape Free" if choose == 1 else 
+                        "With Private" if choose == 2 else 
+                        "Without"
                     )
-                    print(f"{Fore.GREEN + Style.BRIGHT}{proxy_type} Selected.{Style.RESET_ALL}")
+                    print(f"{Fore.GREEN + Style.BRIGHT}Run {proxy_type} Proxy Selected.{Style.RESET_ALL}")
                     break
                 else:
                     print(f"{Fore.RED + Style.BRIGHT}Please enter either 1, 2 or 3.{Style.RESET_ALL}")
@@ -193,16 +198,6 @@ class ByteNova:
 
         return choose, rotate
     
-    async def check_connection(self, proxy=None):
-        connector = ProxyConnector.from_url(proxy) if proxy else None
-        try:
-            async with ClientSession(connector=connector, timeout=ClientTimeout(total=30)) as session:
-                async with session.get(url=self.BASE_API, headers={}) as response:
-                    response.raise_for_status()
-                    return True
-        except (Exception, ClientResponseError) as e:
-            return None
-    
     async def user_login(self, account: str, address: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/api/wallet_login"
         data = FormData()
@@ -215,247 +210,221 @@ class ByteNova:
             connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=self.headers, data=data) as response:
+                    async with session.post(url=url, headers=self.headers, data=data, ssl=False) as response:
                         response.raise_for_status()
                         result = await response.json()
-                        access_token = result["data"]["access_token"]
 
                         raw_cookies = response.headers.getall('Set-Cookie', [])
                         if raw_cookies:
                             cookie_header = self.extract_cookies(raw_cookies)
 
                             if cookie_header:
-                                return access_token, cookie_header
+                                return result, cookie_header
             except (Exception, ClientResponseError) as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return None, None
+                return self.log(
+                    f"{Fore.CYAN+Style.BRIGHT}Error     :{Style.RESET_ALL}"
+                    f"{Fore.RED+Style.BRIGHT} Login Failed {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
+                )
     
-    async def user_verify(self, address: str, access_token: str, cookie: str, proxy=None, retries=5):
+    async def verify_invite(self, address: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/api/invite_verify"
         data = FormData()
         data.add_field("wallet", address)
         data.add_field("invite_code", self.ref_code)
         headers = {
             **self.headers,
-            "Authorization": access_token,
-            "Cookie": cookie
+            "Authorization": self.access_tokens[address],
+            "Cookie": self.cookie_headers[address]
         }
+        await asyncio.sleep(3)
         for attempt in range(retries):
             connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers, data=data) as response:
+                    async with session.post(url=url, headers=headers, data=data, ssl=False) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return None
+                return self.log(
+                    f"{Fore.CYAN+Style.BRIGHT}Error     :{Style.RESET_ALL}"
+                    f"{Fore.RED+Style.BRIGHT} Verify Invite Failed {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
+                )
             
-    async def user_credit(self, address: str, access_token: str, cookie: str, proxy=None, retries=5):
+    async def user_credit(self, address: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/api/credit_refresh"
         data = FormData()
         data.add_field("wallet", address)
         headers = {
             **self.headers,
-            "Authorization": access_token,
-            "Cookie": cookie
+            "Authorization": self.access_tokens[address],
+            "Cookie": self.cookie_headers[address]
         }
+        await asyncio.sleep(3)
         for attempt in range(retries):
             connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers, data=data) as response:
+                    async with session.post(url=url, headers=headers, data=data, ssl=False) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return None
+                return self.log(
+                    f"{Fore.CYAN+Style.BRIGHT}Error     :{Style.RESET_ALL}"
+                    f"{Fore.RED+Style.BRIGHT} GET Total Credits Failed {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
+                )
             
-    async def task_lists(self, access_token: str, cookie: str, proxy=None, retries=5):
+    async def task_lists(self, address: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/api/tweet_list"
         headers = {
             **self.headers,
-            "Authorization": access_token,
-            "Cookie": cookie
+            "Authorization": self.access_tokens[address],
+            "Cookie": self.cookie_headers[address]
         }
+        await asyncio.sleep(3)
         for attempt in range(retries):
             connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.get(url=url, headers=headers) as response:
+                    async with session.get(url=url, headers=headers, ssl=False) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return None
+                return self.log(
+                    f"{Fore.CYAN+Style.BRIGHT}Error     :{Style.RESET_ALL}"
+                    f"{Fore.RED+Style.BRIGHT} GET Task Lists Failed {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
+                )
             
-    async def complete_tasks(self, address: str, access_token: str, cookie: str, task_id: str, proxy=None, retries=5):
+    async def complete_tasks(self, address: str, task_id: str, title: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/api/tweet_refresh"
         data = FormData()
         data.add_field("task_id", task_id)
         data.add_field("wallet", address)
         headers = {
             **self.headers,
-            "Authorization": access_token,
-            "Cookie": cookie
+            "Authorization": self.access_tokens[address],
+            "Cookie": self.cookie_headers[address]
         }
+        await asyncio.sleep(3)
         for attempt in range(retries):
             connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers, data=data) as response:
+                    async with session.post(url=url, headers=headers, data=data, ssl=False) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return None
-            
-    async def process_check_connection(self, address: str, use_proxy: bool, rotate_proxy: bool):
-        message = "Checking Connection, Wait..."
-        if use_proxy:
-            message = "Checking Proxy Connection, Wait..."
-
-        print(
-            f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-            f"{Fore.YELLOW + Style.BRIGHT}{message}{Style.RESET_ALL}",
-            end="\r",
-            flush=True
-        )
-
-        proxy = self.get_next_proxy_for_account(address) if use_proxy else None
-
-        if rotate_proxy:
-            is_valid = None
-            while is_valid is None:
-                is_valid = await self.check_connection(proxy)
-                if not is_valid:
-                    self.log(
-                        f"{Fore.CYAN+Style.BRIGHT}Proxy     :{Style.RESET_ALL}"
-                        f"{Fore.WHITE+Style.BRIGHT} {proxy} {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-                        f"{Fore.RED+Style.BRIGHT} Not 200 OK, {Style.RESET_ALL}"
-                        f"{Fore.YELLOW+Style.BRIGHT}Rotating Proxy...{Style.RESET_ALL}"
-                    )
-                    proxy = self.rotate_proxy_for_account(address) if use_proxy else None
-                    await asyncio.sleep(5)
-                    continue
-
-                self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Proxy     :{Style.RESET_ALL}"
-                    f"{Fore.WHITE+Style.BRIGHT} {proxy} {Style.RESET_ALL}"
+                return self.log(
+                    f"{Fore.MAGENTA + Style.BRIGHT}   >{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} {title} {Style.RESET_ALL}"
+                    f"{Fore.RED + Style.BRIGHT}Not Completed:{Style.RESET_ALL}"
                     f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.GREEN+Style.BRIGHT} 200 OK {Style.RESET_ALL}                  "
+                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
                 )
-
-                return True
-
-        is_valid = await self.check_connection(proxy)
-        if not is_valid:
+    
+    async def process_user_login(self, account: str, address: str, use_proxy: bool, rotate_proxy: bool):
+        while True:
+            proxy = self.get_next_proxy_for_account(address) if use_proxy else None
             self.log(
                 f"{Fore.CYAN+Style.BRIGHT}Proxy     :{Style.RESET_ALL}"
                 f"{Fore.WHITE+Style.BRIGHT} {proxy} {Style.RESET_ALL}"
-                f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-                f"{Fore.RED+Style.BRIGHT} Not 200 OK {Style.RESET_ALL}          "
             )
-            return False
-        
-        self.log(
-            f"{Fore.CYAN+Style.BRIGHT}Proxy     :{Style.RESET_ALL}"
-            f"{Fore.WHITE+Style.BRIGHT} {proxy} {Style.RESET_ALL}"
-            f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-            f"{Fore.GREEN+Style.BRIGHT} 200 OK {Style.RESET_ALL}                  "
-        )
 
-        return True
-    
-    async def process_user_login(self, account: str, address: str, use_proxy: bool):
-        proxy = self.get_next_proxy_for_account(address) if use_proxy else None
+            result, cookie = await self.user_login(account, address, proxy)
+            if isinstance(result, dict) and result.get("code") == 0 and cookie:
+                self.access_tokens[address] = result["data"]["access_token"]
+                self.cookie_headers[address] = cookie
 
-        access_token, cookie = await self.user_login(account, address, proxy)
-        if not access_token or not cookie:
-            self.log(
-                f"{Fore.CYAN + Style.BRIGHT}Status    :{Style.RESET_ALL}"
-                f"{Fore.RED + Style.BRIGHT} Login Failed {Style.RESET_ALL}"
-            )
-            return None, None
-
-        return access_token, cookie
-
-    async def process_accounts(self, account: str, address: str, use_proxy: bool, rotate_proxy: bool):
-        is_valid = await self.process_check_connection(address, use_proxy, rotate_proxy)
-        if is_valid:
-            access_token, cookie = await self.process_user_login(account, address, use_proxy)
-            if access_token and cookie:
-                proxy = self.get_next_proxy_for_account(address) if use_proxy else None
                 self.log(
                     f"{Fore.CYAN + Style.BRIGHT}Status    :{Style.RESET_ALL}"
                     f"{Fore.GREEN + Style.BRIGHT} Login Success {Style.RESET_ALL}"
                 )
+                return True
 
-                await self.user_verify(address, access_token, cookie, proxy)
-                
-                total_credits = "N/A"
-                balance = await self.user_credit(address, access_token, cookie, proxy)
-                if balance:
-                    bind_credit_twitter = balance.get("data", {}).get("bind_credit_twitter", 0)
-                    follow_credit_twitter = balance.get("data", {}).get("follow_credit_twitter", 0)
-                    bind_credit_discord = balance.get("data", {}).get("bind_credit_discord", 0)
-                    follow_credit_discord = balance.get("data", {}).get("follow_credit_discord", 0)
-                    tweet_credit = balance.get("data", {}).get("tweet_credit", 0)
-                    checkin_credit = balance.get("data", {}).get("checkin_credit", 0)
-                    invite_credit = balance.get("data", {}).get("invite_credit", 0) 
+            if rotate_proxy:
+                proxy = self.rotate_proxy_for_account(address)
+                await asyncio.sleep(5)
+                continue
 
-                    total_credits = bind_credit_twitter + follow_credit_twitter + bind_credit_discord + follow_credit_discord + tweet_credit + checkin_credit + invite_credit
+            return False
+
+    async def process_accounts(self, account: str, address: str, use_proxy: bool, rotate_proxy: bool):
+        logined = await self.process_user_login(account, address, use_proxy, rotate_proxy)
+        if logined:
+            proxy = self.get_next_proxy_for_account(address) if use_proxy else None
+
+            await self.verify_invite(address, proxy)
+            
+            credits = await self.user_credit(address, proxy)
+            if isinstance(credits, dict) and credits.get("code") == 0:
+                bind_credit_twitter = credits.get("data", {}).get("bind_credit_twitter", 0)
+                follow_credit_twitter = credits.get("data", {}).get("follow_credit_twitter", 0)
+                bind_credit_discord = credits.get("data", {}).get("bind_credit_discord", 0)
+                follow_credit_discord = credits.get("data", {}).get("follow_credit_discord", 0)
+                tweet_credit = credits.get("data", {}).get("tweet_credit", 0)
+                checkin_credit = credits.get("data", {}).get("checkin_credit", 0)
+                invite_credit = credits.get("data", {}).get("invite_credit", 0) 
+
+                total_credits = bind_credit_twitter + follow_credit_twitter + bind_credit_discord + follow_credit_discord + tweet_credit + checkin_credit + invite_credit
 
                 self.log(
                     f"{Fore.CYAN + Style.BRIGHT}Balance   :{Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT} {total_credits} PTS {Style.RESET_ALL}"
                 )
 
-                task_lists = await self.task_lists(access_token, cookie, proxy)
-                if task_lists:
-                    tasks = task_lists.get("data", {}).get("tweets", [])
+            task_lists = await self.task_lists(address, proxy)
+            if isinstance(task_lists, dict) and task_lists.get("code") == 0:
+                tasks = task_lists.get("data", {}).get("tweets", [])
 
-                    if tasks:
-                        self.log(f"{Fore.CYAN + Style.BRIGHT}Task Lists:{Style.RESET_ALL}")
-                        
-                        for task in tasks:
-                            if task:
-                                task_id = task["task_id"]
-                                title = task["text"]
-                                is_done = task["is_done"]
+                if tasks:
+                    self.log(f"{Fore.CYAN + Style.BRIGHT}Task Lists:{Style.RESET_ALL}")
+                    
+                    for task in tasks:
+                        if task:
+                            task_id = task["task_id"]
+                            title = task["text"]
+                            is_done = task["is_done"]
 
-                                if is_done:
-                                    self.log(
-                                        f"{Fore.MAGENTA + Style.BRIGHT}   >{Style.RESET_ALL}"
-                                        f"{Fore.WHITE + Style.BRIGHT} {title} {Style.RESET_ALL}"
-                                        f"{Fore.YELLOW + Style.BRIGHT}Already Completed{Style.RESET_ALL}"
-                                    )
-                                    continue
+                            if is_done:
+                                self.log(
+                                    f"{Fore.MAGENTA + Style.BRIGHT}   >{Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT} {title} {Style.RESET_ALL}"
+                                    f"{Fore.YELLOW + Style.BRIGHT}Already Completed{Style.RESET_ALL}"
+                                )
+                                continue
 
-                                complete = await self.complete_tasks(address, access_token, cookie, task_id, proxy)
-                                if complete and complete.get("message") == "success":
-                                    self.log(
-                                        f"{Fore.MAGENTA + Style.BRIGHT}   >{Style.RESET_ALL}"
-                                        f"{Fore.WHITE + Style.BRIGHT} {title} {Style.RESET_ALL}"
-                                        f"{Fore.GREEN + Style.BRIGHT}Is Completed{Style.RESET_ALL}"
-                                    )
-                                else:
-                                    message = "Unknown Error"
-                                    if complete.get("code") == 50001:
-                                        message = "Connect Your X Account First"
-
+                            complete = await self.complete_tasks(address, task_id, title, proxy)
+                            if complete and complete.get("message") == "success":
+                                self.log(
+                                    f"{Fore.MAGENTA + Style.BRIGHT}   >{Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT} {title} {Style.RESET_ALL}"
+                                    f"{Fore.GREEN + Style.BRIGHT}Is Completed{Style.RESET_ALL}"
+                                )
+                            else:
+                                if complete.get("code") == 50001:
+                                    message = "Connect Your X Account First"
                                     self.log(
                                         f"{Fore.MAGENTA + Style.BRIGHT}   >{Style.RESET_ALL}"
                                         f"{Fore.WHITE + Style.BRIGHT} {title} {Style.RESET_ALL}"
@@ -463,15 +432,10 @@ class ByteNova:
                                         f"{Fore.YELLOW + Style.BRIGHT} {message} {Style.RESET_ALL}"
                                     )
 
-                    else:
-                        self.log(
-                            f"{Fore.CYAN + Style.BRIGHT}Task Lists:{Style.RESET_ALL}"
-                            f"{Fore.YELLOW + Style.BRIGHT} No Available {Style.RESET_ALL}"
-                        )
                 else:
                     self.log(
                         f"{Fore.CYAN + Style.BRIGHT}Task Lists:{Style.RESET_ALL}"
-                        f"{Fore.RED + Style.BRIGHT} GET Lists Data Failed {Style.RESET_ALL}"
+                        f"{Fore.YELLOW + Style.BRIGHT} No Available {Style.RESET_ALL}"
                     )
 
     async def main(self):
@@ -505,7 +469,15 @@ class ByteNova:
                             f"{Fore.WHITE + Style.BRIGHT} {self.mask_account(address)} {Style.RESET_ALL}"
                             f"{Fore.CYAN + Style.BRIGHT}]{separator}{Style.RESET_ALL}"
                         )
-                        account = await self.process_accounts(account, address, use_proxy, rotate_proxy)
+
+                        if not address:
+                            self.log(
+                                f"{Fore.CYAN + Style.BRIGHT}Status    :{Style.RESET_ALL}"
+                                f"{Fore.RED + Style.BRIGHT} Invalid Private Key or Library Version Not Supported {Style.RESET_ALL}"
+                            )
+                            continue
+                        
+                        await self.process_accounts(account, address, use_proxy, rotate_proxy)
 
                 self.log(f"{Fore.CYAN + Style.BRIGHT}={Style.RESET_ALL}"*72)
                 

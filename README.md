@@ -3,12 +3,13 @@ ByteNova AI BOT
 
 - Register Here : [ByteNova AI](https://bytenova.ai/rewards?invite_code=SEL76HbfL)
 - Use Code `SEL76HbfL`
-- Connect Your X Account
+- Go To Profile Page
+- Connect Your Social Media Accounts
 
 ## Features
 
   - Auto Get Account Information
-  - Auto Run With [Monosans](https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all.txt) Proxy - `Choose 1`
+  - Auto Run With [Proxyscrape Free Proxy](https://proxyscrape.com/free-proxy-list) - `Choose 1`
   - Auto Run With Private Proxy - `Choose 2`
   - Auto Run Without Proxy - `Choose 3`
   - Auto Rotate Invalid Proxies - `y` or `n`
