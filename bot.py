@@ -224,12 +224,14 @@ class ByteNova:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.log(
+                self.log(
                     f"{Fore.CYAN+Style.BRIGHT}Error     :{Style.RESET_ALL}"
                     f"{Fore.RED+Style.BRIGHT} Login Failed {Style.RESET_ALL}"
                     f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
                 )
+
+        return None
     
     async def verify_invite(self, address: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/api/invite_verify"
@@ -253,12 +255,14 @@ class ByteNova:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.log(
+                self.log(
                     f"{Fore.CYAN+Style.BRIGHT}Error     :{Style.RESET_ALL}"
                     f"{Fore.RED+Style.BRIGHT} Verify Invite Failed {Style.RESET_ALL}"
                     f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
                 )
+
+        return None
             
     async def user_credit(self, address: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/api/credit_refresh"
@@ -281,12 +285,14 @@ class ByteNova:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.log(
+                self.log(
                     f"{Fore.CYAN+Style.BRIGHT}Error     :{Style.RESET_ALL}"
                     f"{Fore.RED+Style.BRIGHT} GET Total Credits Failed {Style.RESET_ALL}"
                     f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
                 )
+
+        return None
             
     async def task_lists(self, address: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/api/tweet_list"
@@ -307,12 +313,14 @@ class ByteNova:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.log(
+                self.log(
                     f"{Fore.CYAN+Style.BRIGHT}Error     :{Style.RESET_ALL}"
                     f"{Fore.RED+Style.BRIGHT} GET Task Lists Failed {Style.RESET_ALL}"
                     f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
                 )
+
+        return None
             
     async def complete_tasks(self, address: str, task_id: str, title: str, proxy=None, retries=5):
         url = f"{self.BASE_API}/api/tweet_refresh"
@@ -336,12 +344,14 @@ class ByteNova:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                return self.log(
+                self.log(
                     f"{Fore.MAGENTA + Style.BRIGHT}   >{Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT} {title} {Style.RESET_ALL}"
                     f"{Fore.RED + Style.BRIGHT}Not Completed:{Style.RESET_ALL}"
                     f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
                 )
+
+        return None
     
     async def process_user_login(self, account: str, address: str, use_proxy: bool, rotate_proxy: bool):
         while True:
