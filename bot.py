@@ -20,6 +20,7 @@ class ByteNova:
         self.headers = {
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Cookie": "selectWallet=OKX",
             "Origin": "https://bytenova.ai",
             "Referer": "https://bytenova.ai/",
             "Sec-Fetch-Dest": "empty",
@@ -33,7 +34,6 @@ class ByteNova:
         self.proxy_index = 0
         self.account_proxies = {}
         self.access_tokens = {}
-        self.cookie_headers = {}
 
     def clear_terminal(self):
         os.system('cls' if os.name == 'nt' else 'clear')
@@ -134,29 +134,6 @@ class ByteNova:
         except Exception as e:
             raise Exception(f"Generate Req Payload Failed: {str(e)}")
         
-    def extract_cookies(self, raw_cookies: list):
-        cookies_dict = {}
-        try:
-            skip_keys = ['expires', 'path', 'domain', 'samesite', 'secure', 'httponly', 'max-age']
-
-            for cookie_str in raw_cookies:
-                cookie_parts = cookie_str.split(';')
-
-                for part in cookie_parts:
-                    cookie = part.strip()
-
-                    if '=' in cookie:
-                        name, value = cookie.split('=', 1)
-
-                        if name and value and name.lower() not in skip_keys:
-                            cookies_dict[name] = value
-
-            cookie_header = "; ".join([f"{key}={value}" for key, value in cookies_dict.items()])
-            
-            return cookie_header
-        except Exception as e:
-            raise Exception(f"Extract Cookies Data Failed: {str(e)}")
-    
     def mask_account(self, account):
         try:
             mask_account = account[:6] + '*' * 6 + account[-6:]
@@ -212,14 +189,7 @@ class ByteNova:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
                     async with session.post(url=url, headers=self.headers, data=data, ssl=False) as response:
                         response.raise_for_status()
-                        result = await response.json()
-
-                        raw_cookies = response.headers.getall('Set-Cookie', [])
-                        if raw_cookies:
-                            cookie_header = self.extract_cookies(raw_cookies)
-
-                            if cookie_header:
-                                return result, cookie_header
+                        return await response.json()
             except (Exception, ClientResponseError) as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
@@ -240,8 +210,7 @@ class ByteNova:
         data.add_field("invite_code", self.ref_code)
         headers = {
             **self.headers,
-            "Authorization": self.access_tokens[address],
-            "Cookie": self.cookie_headers[address]
+            "Authorization": self.access_tokens[address]
         }
         await asyncio.sleep(3)
         for attempt in range(retries):
@@ -270,8 +239,7 @@ class ByteNova:
         data.add_field("wallet", address)
         headers = {
             **self.headers,
-            "Authorization": self.access_tokens[address],
-            "Cookie": self.cookie_headers[address]
+            "Authorization": self.access_tokens[address]
         }
         await asyncio.sleep(3)
         for attempt in range(retries):
@@ -298,8 +266,7 @@ class ByteNova:
         url = f"{self.BASE_API}/api/tweet_list"
         headers = {
             **self.headers,
-            "Authorization": self.access_tokens[address],
-            "Cookie": self.cookie_headers[address]
+            "Authorization": self.access_tokens[address]
         }
         await asyncio.sleep(3)
         for attempt in range(retries):
@@ -329,8 +296,7 @@ class ByteNova:
         data.add_field("wallet", address)
         headers = {
             **self.headers,
-            "Authorization": self.access_tokens[address],
-            "Cookie": self.cookie_headers[address]
+            "Authorization": self.access_tokens[address]
         }
         await asyncio.sleep(3)
         for attempt in range(retries):
@@ -361,10 +327,9 @@ class ByteNova:
                 f"{Fore.WHITE+Style.BRIGHT} {proxy} {Style.RESET_ALL}"
             )
 
-            result, cookie = await self.user_login(account, address, proxy)
-            if isinstance(result, dict) and result.get("code") == 0 and cookie:
-                self.access_tokens[address] = result["data"]["access_token"]
-                self.cookie_headers[address] = cookie
+            login = await self.user_login(account, address, proxy)
+            if login and login.get("message") == "success":
+                self.access_tokens[address] = login["data"]["access_token"]
 
                 self.log(
                     f"{Fore.CYAN + Style.BRIGHT}Status    :{Style.RESET_ALL}"
@@ -387,7 +352,7 @@ class ByteNova:
             await self.verify_invite(address, proxy)
             
             credits = await self.user_credit(address, proxy)
-            if isinstance(credits, dict) and credits.get("code") == 0:
+            if credits and credits.get("message") == "success":
                 bind_credit_twitter = credits.get("data", {}).get("bind_credit_twitter", 0)
                 follow_credit_twitter = credits.get("data", {}).get("follow_credit_twitter", 0)
                 bind_credit_discord = credits.get("data", {}).get("bind_credit_discord", 0)
@@ -404,7 +369,7 @@ class ByteNova:
                 )
 
             task_lists = await self.task_lists(address, proxy)
-            if isinstance(task_lists, dict) and task_lists.get("code") == 0:
+            if task_lists and task_lists.get("message") == "success":
                 tasks = task_lists.get("data", {}).get("tweets", [])
 
                 if tasks:
