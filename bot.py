@@ -2,6 +2,7 @@ from aiohttp import (
     ClientResponseError,
     ClientSession,
     ClientTimeout,
+    BasicAuth,
     FormData
 )
 from aiohttp_socks import ProxyConnector
@@ -11,7 +12,7 @@ from eth_account.messages import encode_defunct
 from eth_utils import to_hex
 from datetime import datetime
 from colorama import *
-import asyncio, os, pytz
+import asyncio, re, os, pytz
 
 wib = pytz.timezone('Asia/Jakarta')
 
@@ -48,7 +49,7 @@ class ByteNova:
     def welcome(self):
         print(
             f"""
-        {Fore.GREEN + Style.BRIGHT}Auto Claim {Fore.BLUE + Style.BRIGHT}ByteNova AI - BOT
+        {Fore.GREEN + Style.BRIGHT}ByteNova AI {Fore.BLUE + Style.BRIGHT}Auto BOT
             """
             f"""
         {Fore.GREEN + Style.BRIGHT}Rey? {Fore.YELLOW + Style.BRIGHT}<INI WATERMARK>
@@ -65,7 +66,7 @@ class ByteNova:
         try:
             if use_proxy_choice == 1:
                 async with ClientSession(timeout=ClientTimeout(total=30)) as session:
-                    async with session.get("https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text") as response:
+                    async with session.get("https://raw.githubusercontent.com/monosans/proxy-list/refs/heads/main/proxies/http.txt") as response:
                         response.raise_for_status()
                         content = await response.text()
                         with open(filename, 'w') as f:
@@ -113,6 +114,26 @@ class ByteNova:
         self.account_proxies[account] = proxy
         self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
         return proxy
+    
+    def build_proxy_config(self, proxy=None):
+        if not proxy:
+            return None, None, None
+
+        if proxy.startswith("socks"):
+            connector = ProxyConnector.from_url(proxy)
+            return connector, None, None
+
+        elif proxy.startswith("http"):
+            match = re.match(r"http://(.*?):(.*?)@(.*)", proxy)
+            if match:
+                username, password, host_port = match.groups()
+                clean_url = f"http://{host_port}"
+                auth = BasicAuth(username, password)
+                return None, clean_url, auth
+            else:
+                return None, proxy, None
+
+        raise Exception("Unsupported Proxy Type.")
         
     def generate_address(self, account: str):
         try:
@@ -175,7 +196,24 @@ class ByteNova:
 
         return choose, rotate
     
-    async def user_login(self, account: str, address: str, proxy=None, retries=5):
+    async def check_connection(self, proxy_url=None):
+        connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
+        try:
+            async with ClientSession(connector=connector, timeout=ClientTimeout(total=30)) as session:
+                async with session.get(url="https://api.ipify.org?format=json", proxy=proxy, proxy_auth=proxy_auth) as response:
+                    response.raise_for_status()
+                    return True
+        except (Exception, ClientResponseError) as e:
+            self.log(
+                f"{Fore.CYAN+Style.BRIGHT}Status    :{Style.RESET_ALL}"
+                f"{Fore.RED+Style.BRIGHT} Connection Not 200 OK {Style.RESET_ALL}"
+                f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+                f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
+            )
+        
+        return None
+    
+    async def user_login(self, account: str, address: str, proxy_url=None, retries=5):
         url = f"{self.BASE_API}/api/wallet_login"
         data = FormData()
         data.add_field("wallet_signature", self.generate_signature(account))
@@ -184,10 +222,10 @@ class ByteNova:
         data.add_field("public_key", "")
         data.add_field("chain_type", "BNB")
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
+            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=self.headers, data=data, ssl=False) as response:
+                    async with session.post(url=url, headers=self.headers, data=data, proxy=proxy, proxy_auth=proxy_auth) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
@@ -195,7 +233,7 @@ class ByteNova:
                     await asyncio.sleep(5)
                     continue
                 self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Error     :{Style.RESET_ALL}"
+                    f"{Fore.CYAN+Style.BRIGHT}Status    :{Style.RESET_ALL}"
                     f"{Fore.RED+Style.BRIGHT} Login Failed {Style.RESET_ALL}"
                     f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
@@ -203,7 +241,7 @@ class ByteNova:
 
         return None
     
-    async def verify_invite(self, address: str, proxy=None, retries=5):
+    async def verify_invite(self, address: str, proxy_url=None, retries=5):
         url = f"{self.BASE_API}/api/invite_verify"
         data = FormData()
         data.add_field("wallet", address)
@@ -214,10 +252,10 @@ class ByteNova:
         }
         await asyncio.sleep(3)
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
+            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers, data=data, ssl=False) as response:
+                    async with session.post(url=url, headers=headers, data=data, proxy=proxy, proxy_auth=proxy_auth) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
@@ -225,7 +263,7 @@ class ByteNova:
                     await asyncio.sleep(5)
                     continue
                 self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Error     :{Style.RESET_ALL}"
+                    f"{Fore.CYAN+Style.BRIGHT}Status    :{Style.RESET_ALL}"
                     f"{Fore.RED+Style.BRIGHT} Verify Invite Failed {Style.RESET_ALL}"
                     f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
@@ -233,7 +271,7 @@ class ByteNova:
 
         return None
             
-    async def user_credit(self, address: str, proxy=None, retries=5):
+    async def user_credit(self, address: str, proxy_url=None, retries=5):
         url = f"{self.BASE_API}/api/credit_refresh"
         data = FormData()
         data.add_field("wallet", address)
@@ -243,10 +281,10 @@ class ByteNova:
         }
         await asyncio.sleep(3)
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
+            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers, data=data, ssl=False) as response:
+                    async with session.post(url=url, headers=headers, data=data, proxy=proxy, proxy_auth=proxy_auth) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
@@ -254,15 +292,15 @@ class ByteNova:
                     await asyncio.sleep(5)
                     continue
                 self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Error     :{Style.RESET_ALL}"
-                    f"{Fore.RED+Style.BRIGHT} GET Total Credits Failed {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}Balance   :{Style.RESET_ALL}"
+                    f"{Fore.RED+Style.BRIGHT} Fetch Credits Failed {Style.RESET_ALL}"
                     f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
                 )
 
         return None
             
-    async def task_lists(self, address: str, proxy=None, retries=5):
+    async def task_lists(self, address: str, proxy_url=None, retries=5):
         url = f"{self.BASE_API}/api/tweet_list"
         headers = {
             **self.headers,
@@ -270,10 +308,10 @@ class ByteNova:
         }
         await asyncio.sleep(3)
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
+            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.get(url=url, headers=headers, ssl=False) as response:
+                    async with session.get(url=url, headers=headers, proxy=proxy, proxy_auth=proxy_auth) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
@@ -281,15 +319,15 @@ class ByteNova:
                     await asyncio.sleep(5)
                     continue
                 self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Error     :{Style.RESET_ALL}"
-                    f"{Fore.RED+Style.BRIGHT} GET Task Lists Failed {Style.RESET_ALL}"
+                    f"{Fore.CYAN+Style.BRIGHT}Task Lists:{Style.RESET_ALL}"
+                    f"{Fore.RED+Style.BRIGHT} Fetch Data Failed {Style.RESET_ALL}"
                     f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
                     f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
                 )
 
         return None
             
-    async def complete_tasks(self, address: str, task_id: str, title: str, proxy=None, retries=5):
+    async def complete_tasks(self, address: str, task_id: str, title: str, proxy_url=None, retries=5):
         url = f"{self.BASE_API}/api/tweet_refresh"
         data = FormData()
         data.add_field("task_id", task_id)
@@ -300,10 +338,10 @@ class ByteNova:
         }
         await asyncio.sleep(3)
         for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
+            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers, data=data, ssl=False) as response:
+                    async with session.post(url=url, headers=headers, data=data, proxy=proxy, proxy_auth=proxy_auth) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
@@ -319,13 +357,27 @@ class ByteNova:
 
         return None
     
-    async def process_user_login(self, account: str, address: str, use_proxy: bool, rotate_proxy: bool):
+    async def process_check_connection(self, address: str, use_proxy: bool, rotate_proxy: bool):
         while True:
             proxy = self.get_next_proxy_for_account(address) if use_proxy else None
             self.log(
                 f"{Fore.CYAN+Style.BRIGHT}Proxy     :{Style.RESET_ALL}"
                 f"{Fore.WHITE+Style.BRIGHT} {proxy} {Style.RESET_ALL}"
             )
+
+            is_valid = await self.check_connection(proxy)
+            if not is_valid:
+                if rotate_proxy:
+                    proxy = self.rotate_proxy_for_account(address)
+
+                continue
+
+            return True
+    
+    async def process_user_login(self, account: str, address: str, use_proxy: bool, rotate_proxy: bool):
+        is_valid = await self.process_check_connection(address, use_proxy, rotate_proxy)
+        if is_valid:
+            proxy = self.get_next_proxy_for_account(address) if use_proxy else None
 
             login = await self.user_login(account, address, proxy)
             if login and login.get("message") == "success":
@@ -336,11 +388,6 @@ class ByteNova:
                     f"{Fore.GREEN + Style.BRIGHT} Login Success {Style.RESET_ALL}"
                 )
                 return True
-
-            if rotate_proxy:
-                proxy = self.rotate_proxy_for_account(address)
-                await asyncio.sleep(5)
-                continue
 
             return False
 
