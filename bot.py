@@ -18,19 +18,9 @@ wib = pytz.timezone('Asia/Jakarta')
 
 class ByteNova:
     def __init__(self) -> None:
-        self.headers = {
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Cookie": "selectWallet=OKX",
-            "Origin": "https://bytenova.ai",
-            "Referer": "https://bytenova.ai/",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-origin",
-            "User-Agent": FakeUserAgent().random
-        }
         self.BASE_API = "https://bytenova.ai"
-        self.ref_code = "SEL76HbfL" # U can change it with yours.
+        self.REF_CODE = "SEL76HbfL" # U can change it with yours.
+        self.HEADERS = {}
         self.proxies = []
         self.proxy_index = 0
         self.account_proxies = {}
@@ -61,23 +51,14 @@ class ByteNova:
         minutes, seconds = divmod(remainder, 60)
         return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
     
-    async def load_proxies(self, use_proxy_choice: int):
+    async def load_proxies(self):
         filename = "proxy.txt"
         try:
-            if use_proxy_choice == 1:
-                async with ClientSession(timeout=ClientTimeout(total=30)) as session:
-                    async with session.get("https://raw.githubusercontent.com/monosans/proxy-list/refs/heads/main/proxies/http.txt") as response:
-                        response.raise_for_status()
-                        content = await response.text()
-                        with open(filename, 'w') as f:
-                            f.write(content)
-                        self.proxies = [line.strip() for line in content.splitlines() if line.strip()]
-            else:
-                if not os.path.exists(filename):
-                    self.log(f"{Fore.RED + Style.BRIGHT}File {filename} Not Found.{Style.RESET_ALL}")
-                    return
-                with open(filename, 'r') as f:
-                    self.proxies = [line.strip() for line in f.read().splitlines() if line.strip()]
+            if not os.path.exists(filename):
+                self.log(f"{Fore.RED + Style.BRIGHT}File {filename} Not Found.{Style.RESET_ALL}")
+                return
+            with open(filename, 'r') as f:
+                self.proxies = [line.strip() for line in f.read().splitlines() if line.strip()]
             
             if not self.proxies:
                 self.log(f"{Fore.RED + Style.BRIGHT}No Proxies Found.{Style.RESET_ALL}")
@@ -165,36 +146,34 @@ class ByteNova:
     def print_question(self):
         while True:
             try:
-                print(f"{Fore.WHITE + Style.BRIGHT}1. Run With Proxyscrape Free Proxy{Style.RESET_ALL}")
-                print(f"{Fore.WHITE + Style.BRIGHT}2. Run With Private Proxy{Style.RESET_ALL}")
-                print(f"{Fore.WHITE + Style.BRIGHT}3. Run Without Proxy{Style.RESET_ALL}")
-                choose = int(input(f"{Fore.BLUE + Style.BRIGHT}Choose [1/2/3] -> {Style.RESET_ALL}").strip())
+                print(f"{Fore.WHITE + Style.BRIGHT}1. Run With Proxy{Style.RESET_ALL}")
+                print(f"{Fore.WHITE + Style.BRIGHT}2. Run Without Proxy{Style.RESET_ALL}")
+                proxy_choice = int(input(f"{Fore.BLUE + Style.BRIGHT}Choose [1/2] -> {Style.RESET_ALL}").strip())
 
-                if choose in [1, 2, 3]:
+                if proxy_choice in [1, 2]:
                     proxy_type = (
-                        "With Proxyscrape Free" if choose == 1 else 
-                        "With Private" if choose == 2 else 
+                        "With" if proxy_choice == 1 else 
                         "Without"
                     )
                     print(f"{Fore.GREEN + Style.BRIGHT}Run {proxy_type} Proxy Selected.{Style.RESET_ALL}")
                     break
                 else:
-                    print(f"{Fore.RED + Style.BRIGHT}Please enter either 1, 2 or 3.{Style.RESET_ALL}")
+                    print(f"{Fore.RED + Style.BRIGHT}Please enter either 1 or 2.{Style.RESET_ALL}")
             except ValueError:
-                print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1, 2 or 3).{Style.RESET_ALL}")
+                print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1 or 2).{Style.RESET_ALL}")
 
-        rotate = False
-        if choose in [1, 2]:
+        rotate_proxy = False
+        if proxy_choice == 1:
             while True:
-                rotate = input(f"{Fore.BLUE + Style.BRIGHT}Rotate Invalid Proxy? [y/n] -> {Style.RESET_ALL}").strip()
+                rotate_proxy = input(f"{Fore.BLUE + Style.BRIGHT}Rotate Invalid Proxy? [y/n] -> {Style.RESET_ALL}").strip()
 
-                if rotate in ["y", "n"]:
-                    rotate = rotate == "y"
+                if rotate_proxy in ["y", "n"]:
+                    rotate_proxy = rotate_proxy == "y"
                     break
                 else:
                     print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter 'y' or 'n'.{Style.RESET_ALL}")
 
-        return choose, rotate
+        return proxy_choice, rotate_proxy
     
     async def check_connection(self, proxy_url=None):
         connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
@@ -225,7 +204,7 @@ class ByteNova:
             connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=self.headers, data=data, proxy=proxy, proxy_auth=proxy_auth) as response:
+                    async with session.post(url=url, headers=self.HEADERS[address], data=data, proxy=proxy, proxy_auth=proxy_auth) as response:
                         response.raise_for_status()
                         return await response.json()
             except (Exception, ClientResponseError) as e:
@@ -245,9 +224,9 @@ class ByteNova:
         url = f"{self.BASE_API}/api/invite_verify"
         data = FormData()
         data.add_field("wallet", address)
-        data.add_field("invite_code", self.ref_code)
+        data.add_field("invite_code", self.REF_CODE)
         headers = {
-            **self.headers,
+            **self.HEADERS[address],
             "Authorization": self.access_tokens[address]
         }
         await asyncio.sleep(3)
@@ -276,7 +255,7 @@ class ByteNova:
         data = FormData()
         data.add_field("wallet", address)
         headers = {
-            **self.headers,
+            **self.HEADERS[address],
             "Authorization": self.access_tokens[address]
         }
         await asyncio.sleep(3)
@@ -303,7 +282,7 @@ class ByteNova:
     async def task_lists(self, address: str, proxy_url=None, retries=5):
         url = f"{self.BASE_API}/api/tweet_list"
         headers = {
-            **self.headers,
+            **self.HEADERS[address],
             "Authorization": self.access_tokens[address]
         }
         await asyncio.sleep(3)
@@ -333,7 +312,7 @@ class ByteNova:
         data.add_field("task_id", task_id)
         data.add_field("wallet", address)
         headers = {
-            **self.headers,
+            **self.HEADERS[address],
             "Authorization": self.access_tokens[address]
         }
         await asyncio.sleep(3)
@@ -369,8 +348,10 @@ class ByteNova:
             if not is_valid:
                 if rotate_proxy:
                     proxy = self.rotate_proxy_for_account(address)
+                    await asyncio.sleep(1)
+                    continue
 
-                continue
+                return False
 
             return True
     
@@ -464,13 +445,11 @@ class ByteNova:
             with open('accounts.txt', 'r') as file:
                 accounts = [line.strip() for line in file if line.strip()]
 
-            use_proxy_choice, rotate_proxy = self.print_question()
-
-            use_proxy = False
-            if use_proxy_choice in [1, 2]:
-                use_proxy = True
+            proxy_choice, rotate_proxy = self.print_question()
 
             while True:
+                use_proxy = True if proxy_choice == 1 else False
+
                 self.clear_terminal()
                 self.welcome()
                 self.log(
@@ -479,7 +458,7 @@ class ByteNova:
                 )
 
                 if use_proxy:
-                    await self.load_proxies(use_proxy_choice)
+                    await self.load_proxies()
 
                 separator = "=" * 25
                 for account in accounts:
@@ -497,6 +476,18 @@ class ByteNova:
                                 f"{Fore.RED + Style.BRIGHT} Invalid Private Key or Library Version Not Supported {Style.RESET_ALL}"
                             )
                             continue
+
+                        self.HEADERS[address] = {
+                            "Accept": "application/json, text/plain, */*",
+                            "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+                            "Cookie": "selectWallet=OKX",
+                            "Origin": "https://bytenova.ai",
+                            "Referer": "https://bytenova.ai/",
+                            "Sec-Fetch-Dest": "empty",
+                            "Sec-Fetch-Mode": "cors",
+                            "Sec-Fetch-Site": "same-origin",
+                            "User-Agent": FakeUserAgent().random
+                        }
                         
                         await self.process_accounts(account, address, use_proxy, rotate_proxy)
 
